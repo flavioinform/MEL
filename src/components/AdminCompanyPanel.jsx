@@ -110,40 +110,40 @@ function AdminCompanyPanel() {
                 throw new Error('Email inválido');
             }
 
-            // 1. Crear usuario en Supabase Auth
-            const { data: authData, error: authError } = await supabase.auth.signUp({
-                email: formData.email,
-                password: formData.password,
-                options: {
-                    data: {
-                        empresa_nombre: formData.nombre,
-                        empresa_rut: formData.rut,
-                    },
+            // 1. Invocar Edge Function para crear usuario (esto evita cerrar la sesión del admin)
+            const { data, error } = await supabase.functions.invoke('create-company-user', {
+                body: {
+                    nombre: formData.nombre.trim(),
+                    rut_empresa: formData.rut,
+                    email: formData.email,
+                    password: formData.password,
                 },
             });
 
-            if (authError) throw authError;
-
-            if (!authData.user) {
-                throw new Error('No se pudo crear el usuario');
+            if (error) {
+                // Intentar extraer mensaje de error detallado
+                let detailedMessage = error.message;
+                if (error && typeof error === 'object' && 'context' in error) {
+                    try {
+                        const errorResponse = error.context;
+                        if (errorResponse && typeof errorResponse.json === 'function') {
+                            const body = await errorResponse.json();
+                            if (body && body.error) {
+                                detailedMessage = body.error;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("No se pudo parsear el JSON del error de creación:", e);
+                    }
+                }
+                throw new Error(detailedMessage);
             }
 
-            // 2. Crear registro en tabla empresas
-            const { error: empresaError } = await supabase.from('empresas').insert([
-                {
-                    auth_usuario_id: authData.user.id,
-                    nombre: formData.nombre.trim(),
-                    rut_empresa: formData.rut,
-                    email_contacto: formData.email, // ✅ Guardar email de contacto
-                    rol: 'normal', // Por defecto es usuario normal
-                },
-            ]);
-
-            if (empresaError) {
-                // Si falla la creación de la empresa, intentar eliminar el usuario creado
-                console.error('Error creando empresa, limpiando usuario...', empresaError);
-                throw empresaError;
+            if (!data || !data.success) {
+                throw new Error(data?.error || 'Error al crear la empresa (Function)');
             }
+
+            // La función ya crea el usuario y el registro en empresas, no necesitamos hacer nada más.
 
             setMessage({
                 type: 'success',
@@ -189,6 +189,12 @@ function AdminCompanyPanel() {
         setMessage(null);
 
         try {
+            console.log("Intentando resetear contraseña. Empresa:", empresa.nombre, "ID:", empresa.auth_usuario_id);
+
+            if (!empresa.auth_usuario_id) {
+                throw new Error("No se encontró el ID de autenticación (auth_usuario_id) para esta empresa.");
+            }
+
             const { data, error } = await supabase.functions.invoke('reset-company-password', {
                 body: {
                     user_id: empresa.auth_usuario_id,
@@ -196,10 +202,32 @@ function AdminCompanyPanel() {
                 }
             });
 
-            if (error) throw error;
+            if (error) {
+                console.error("Error devuelto por invoke:", error);
 
-            if (!data.success) {
-                throw new Error(data.error || 'Error al resetear contraseña');
+                // Intentar extraer mensaje de error detallado del cuerpo de la respuesta
+                let detailedMessage = error.message;
+
+                // Supabase FunctionsHttpError suele tener una propiedad 'context' que es el objeto Response
+                if (error && typeof error === 'object' && 'context' in error) {
+                    try {
+                        const errorResponse = error.context;
+                        if (errorResponse && typeof errorResponse.json === 'function') {
+                            const body = await errorResponse.json();
+                            if (body && body.error) {
+                                detailedMessage = body.error;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("No se pudo parsear el JSON del error:", e);
+                    }
+                }
+
+                throw new Error(detailedMessage);
+            }
+
+            if (!data || !data.success) {
+                throw new Error(data?.error || 'La función no devolvió éxito.');
             }
 
             setMessage({
@@ -207,7 +235,7 @@ function AdminCompanyPanel() {
                 text: `✅ Contraseña actualizada correctamente para "${empresa.nombre}".`,
             });
         } catch (error) {
-            console.error('Error resetting password:', error);
+            console.error('Error resetting password catch:', error);
             setMessage({
                 type: 'error',
                 text: 'Error al resetear contraseña: ' + (error.message || 'Error desconocido'),

@@ -79,6 +79,7 @@ serve(async (req) => {
                     auth_usuario_id: newUser.user.id,
                     nombre: nombre,
                     rut_empresa: rut_empresa,
+                    email_contacto: email,
                     rol: 'normal',
                 }
             ])
