@@ -1,13 +1,17 @@
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import { useState, useEffect } from "react";
-import { Menu, X, LogOut, User } from "lucide-react";
+import { Menu, X, LogOut, User, Settings } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
 function Navbar() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [empresa, setEmpresa] = useState(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  const isOnDashboard = location.pathname === '/dashboard';
 
   // Detect scroll for styling
   useEffect(() => {
@@ -23,10 +27,13 @@ function Navbar() {
     const fetchEmpresa = async (userId) => {
       const { data } = await supabase
         .from("empresas")
-        .select("nombre, rut_empresa")
+        .select("nombre, rut_empresa, rol")
         .eq("auth_usuario_id", userId)
         .single();
-      if (data) setEmpresa(data);
+      if (data) {
+        setEmpresa(data);
+        setIsAdmin(data.rol === 'administrador');
+      }
     };
 
     const checkUser = async () => {
@@ -55,17 +62,21 @@ function Navbar() {
   };
 
   const navLinks = [
+    { name: "Inicio", href: "/" },
     { name: "Empresa", href: "#quienes-somos" },
+    { name: "Misión", href: "/mision" },
+    { name: "Visión", href: "/vision" },
     { name: "Por qué elegirnos", href: "#por-que-elegirnos" },
     { name: "Servicios", href: "#servicios" },
     { name: "Sectores", href: "#sectores" },
+    { name: "Contáctanos", href: "#contacto" },
   ];
 
   return (
     <header
       className={`fixed top-0 w-full z-50 transition-all duration-300 border-b ${scrolled
-          ? "bg-white/90 backdrop-blur-md shadow-sm border-slate-200 py-3"
-          : "bg-white border-transparent py-5"
+        ? "bg-white/90 backdrop-blur-md shadow-sm border-slate-200 py-3"
+        : "bg-white border-transparent py-5"
         }`}
     >
       <nav className="container mx-auto px-6 flex justify-between items-center">
@@ -76,7 +87,7 @@ function Navbar() {
             <span className="text-white font-black text-xl tracking-tighter">M</span>
           </div>
           <span className="text-2xl font-black text-slate-800 tracking-tighter group-hover:text-sky-600 transition-colors">
-            MEL
+            MELS
           </span>
         </Link>
 
@@ -93,7 +104,16 @@ function Navbar() {
           ))}
 
           {empresa ? (
-            <div className="flex items-center gap-4 pl-4 border-l border-slate-200">
+            <div className="flex items-center gap-3 pl-4 border-l border-slate-200">
+              {isAdmin && isOnDashboard && (
+                <Link
+                  to="/dashboard?panel=admin"
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-sky-500 to-blue-600 text-white font-bold rounded-lg hover:from-sky-600 hover:to-blue-700 transition-all shadow-md hover:shadow-lg text-sm"
+                >
+                  <Settings size={18} />
+                  Gestión Empresas
+                </Link>
+              )}
               <div className="text-right hidden lg:block">
                 <p className="text-sm font-bold text-slate-700 leading-none">{empresa.nombre}</p>
                 <p className="text-xs text-slate-400">{empresa.rut_empresa}</p>

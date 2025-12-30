@@ -156,7 +156,7 @@ function Register() {
                   onChange={handleChange}
                   className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition bg-slate-50 text-slate-800 placeholder-slate-400 pr-10"
                   required
-                  minLength={6}
+                  minLength={8}
                 />
                 <button
                   type="button"

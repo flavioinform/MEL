@@ -98,12 +98,12 @@ function Login() {
               {cargando ? "Iniciando..." : "Ingresar"}
             </button>
 
-            <div className="text-center pt-4">
+            {/* <div className="text-center pt-4">
               <span className="text-slate-500 text-sm font-medium">¿No tienes cuenta? </span>
               <Link to="/register" className="text-sky-600 font-bold hover:underline hover:text-sky-700 text-sm transition">
                 Regístrate aquí
               </Link>
-            </div>
+            </div> */}
           </form>
         </div>
       </div>

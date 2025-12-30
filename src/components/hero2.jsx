@@ -44,8 +44,8 @@ function Hero2() {
     <section className="w-full bg-sky-50 py-16 flex flex-col items-center overflow-hidden">
       <div className="mb-10 text-center">
         <h2 className="text-4xl md:text-5xl font-black uppercase tracking-tighter">
-          <span className="block text-transparent bg-clip-text bg-gradient-to-b from-slate-200 to-slate-400 opacity-80"
-            style={{ WebkitTextStroke: '1px #94a3b8' }}>
+          <span className="block text-transparent bg-clip-text bg-black from-slate-200 to-slate-400 opacity-80"
+            style={{ WebkitTextStroke: '1px #0a0a0aff' }}>
             Nuestras
           </span>
           <span className="block text-sky-500 mt-[-0.3em] relative z-10 drop-shadow-sm">

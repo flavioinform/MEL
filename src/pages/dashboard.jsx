@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import AdminCompanyPanel from "../components/AdminCompanyPanel";
 import {
     Folder,
     Upload,
@@ -11,6 +12,10 @@ import {
     Building2,
     ChevronLeft,
     Eye,
+    Settings,
+    MessageSquare,
+    Send,
+    Trash2,
 } from "lucide-react";
 
 const BUCKET = "documentacion-empresas";
@@ -27,6 +32,9 @@ function Dashboard() {
     const [carpetas, setCarpetas] = useState([]);
     const [allEmpresas, setAllEmpresas] = useState([]);
     const [files, setFiles] = useState({}); // carpetaId -> files[]
+    const [comentarios, setComentarios] = useState({}); // carpetaId -> comentario
+    const [editingComment, setEditingComment] = useState(null); // carpetaId being edited
+    const [commentText, setCommentText] = useState(""); // temp comment text
 
     // UI / View
     const [selectedEmpresa, setSelectedEmpresa] = useState(null);
@@ -34,6 +42,9 @@ function Dashboard() {
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(null);
     const [message, setMessage] = useState(null);
+
+    // Check URL parameter for admin panel
+    const showAdminPanel = new URLSearchParams(window.location.search).get('panel') === 'admin';
 
     console.log("✅ Dashboard activo | bucket =", BUCKET);
 
@@ -68,6 +79,7 @@ function Dashboard() {
     useEffect(() => {
         if (selectedEmpresa?.id) {
             fetchFiles(selectedEmpresa.id);
+            fetchComentarios(selectedEmpresa.id);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedEmpresa?.id]);
@@ -100,6 +112,10 @@ function Dashboard() {
 
             // ✅ CORREGIDO: enum tiene 'administrador' y 'normal'
             const adminRole = empresaData.rol === ROLES.ADMIN;
+            console.log('🔍 DEBUG - Empresa Data:', empresaData);
+            console.log('🔍 DEBUG - Rol:', empresaData.rol);
+            console.log('🔍 DEBUG - ROLES.ADMIN:', ROLES.ADMIN);
+            console.log('🔍 DEBUG - Is Admin?:', adminRole);
             setIsAdmin(adminRole);
 
             // Carpetas siempre
@@ -223,6 +239,62 @@ function Dashboard() {
     };
 
     // ✅ CORREGIDO: signed URL para bucket privado
+    // ✅ Función para eliminar archivos
+    const handleDeleteFile = async (file) => {
+        if (!window.confirm(`¿Estás seguro de eliminar el archivo "${file.nombre_archivo}"?`)) return;
+
+        setLoading(true);
+        try {
+            // 1. Delete from Storage
+            const { error: storageError } = await supabase.storage
+                .from(BUCKET)
+                .remove([file.ruta_almacenamiento]);
+
+            if (storageError) throw storageError;
+
+            // 2. Delete from Database
+            const { error: dbError } = await supabase
+                .from("documentos")
+                .delete()
+                .eq("id", file.id);
+
+            if (dbError) throw dbError;
+
+            setMessage({ type: "success", text: "Archivo eliminado correctamente" });
+
+            // Refresh files (using the correct ID based on current view context)
+            const targetId = selectedEmpresa?.id;
+            if (targetId) await fetchFiles(targetId);
+
+        } catch (error) {
+            console.error("Delete error:", error);
+            setMessage({ type: "error", text: "Error al eliminar el archivo: " + error.message });
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteComment = async (commentId, carpetaId) => {
+        if (!window.confirm("¿Seguro que quieres eliminar este comentario?")) return;
+        setLoading(true);
+        try {
+            const { error } = await supabase
+                .from('comentarios_carpeta')
+                .delete()
+                .eq('id', commentId);
+
+            if (error) throw error;
+
+            setMessage({ type: 'success', text: 'Comentario eliminado' });
+            await fetchComentarios(selectedEmpresa.id);
+        } catch (error) {
+            console.error('Error deleting comment:', error);
+            setMessage({ type: 'error', text: 'Error al eliminar comentario' });
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleFileView = async (filePath) => {
         try {
             const { data, error } = await supabase.storage
@@ -235,6 +307,71 @@ function Dashboard() {
         } catch (error) {
             console.error("View error:", error);
             setMessage({ type: "error", text: error?.message || "No se pudo abrir el archivo" });
+        }
+    };
+
+    const fetchComentarios = async (empresaId) => {
+        try {
+            const { data, error } = await supabase
+                .from('comentarios_carpeta')
+                .select('*')
+                .eq('empresa_id', empresaId);
+
+            if (error) throw error;
+
+            const grouped = (data || []).reduce((acc, c) => {
+                if (!acc[c.carpeta_tipo_id]) acc[c.carpeta_tipo_id] = [];
+                acc[c.carpeta_tipo_id].push(c);
+                return acc;
+            }, {});
+            setComentarios(grouped);
+        } catch (error) {
+            console.error('Error fetching comentarios:', error);
+        }
+    };
+
+    const handleSaveComment = async (carpetaId) => {
+        if (!commentText.trim() || !selectedEmpresa?.id) return;
+
+        setLoading(true);
+        setMessage(null);
+
+        try {
+            const { error: dbError } = await supabase
+                .from('comentarios_carpeta')
+                .insert([{ // Usamos insert para múltiples comentarios
+                    empresa_id: selectedEmpresa.id,
+                    carpeta_tipo_id: carpetaId,
+                    comentario: commentText.trim(),
+                    created_by: currentUserEmpresa.id,
+                }]);
+
+            // Si hay error de unique constraint, significa que la tabla aún no soporta múltiples comentarios
+            if (dbError) {
+                if (dbError.code === '23505') { // Unique violation code standard in Postgres
+                    throw new Error("La base de datos actual solo permite 1 comentario por carpeta. Contacta al soporte para actualizar esto.");
+                }
+                throw dbError;
+            }
+
+            setMessage({
+                type: 'success',
+                text: '✅ Nuevo comentario agregado'
+            });
+
+            // Refrescar comentarios
+            await fetchComentarios(selectedEmpresa.id);
+            setCommentText('');
+            // Cerrar el editor si lo hubiera (aunque ahora es siempre visible el form de 'Agregar')
+            setEditingComment(null);
+        } catch (error) {
+            console.error('Error saving comment:', error);
+            setMessage({
+                type: 'error',
+                text: error.message || 'Error al guardar comentario'
+            });
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -265,26 +402,47 @@ function Dashboard() {
         <div className="min-h-screen bg-slate-50 font-sans">
             {/* HEADER */}
             <header className="bg-white shadow-sm border-b border-slate-200 sticky top-0 z-40">
-                <div className="container mx-auto px-6 py-4 flex justify-between items-center">
-                    <div>
-                        <h1 className="text-2xl font-black text-slate-800 tracking-tight">
-                            {isAdmin ? "Panel de Administración" : "Panel de Gestión"}
-                        </h1>
-                        <div className="flex items-center gap-2 text-sm text-slate-500">
-                            <Building2 size={14} />
-                            <span className="font-semibold">{currentUserEmpresa?.nombre}</span>
-                            <span className="px-2 py-0.5 bg-slate-100 rounded-full text-xs font-mono">
-                                {currentUserEmpresa?.rut_empresa}
-                            </span>
+                <div className="container mx-auto px-6 py-4">
+                    <div className="flex justify-between items-center gap-4">
+                        <div className="flex-shrink-0">
+                            <h1 className="text-2xl font-black text-slate-800 tracking-tight">
+                                {isAdmin ? "Panel de Administración" : "Panel de Gestión"}
+                            </h1>
+                            <div className="flex items-center gap-2 text-sm text-slate-500">
+                                <Building2 size={14} />
+                                <span className="font-semibold">{currentUserEmpresa?.nombre}</span>
+                                <span className="px-2 py-0.5 bg-slate-100 rounded-full text-xs font-mono">
+                                    {currentUserEmpresa?.rut_empresa}
+                                </span>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 flex-shrink-0">
+                            {/* DEBUG INDICATOR */}
+                            <div className="px-3 py-2 bg-yellow-300 text-black font-bold rounded text-xs">
+                                Admin: {isAdmin ? 'SÍ ✅' : 'NO ❌'}
+                            </div>
+
+                            {isAdmin && (
+                                <button
+                                    onClick={() => setShowAdminPanel(!showAdminPanel)}
+                                    className={`flex items-center gap-2 font-bold text-sm px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${showAdminPanel
+                                        ? 'bg-sky-500 text-white hover:bg-sky-600'
+                                        : 'bg-slate-50 text-slate-500 hover:bg-sky-50 hover:text-sky-600'
+                                        }`}
+                                >
+                                    <Settings size={18} />
+                                    {showAdminPanel ? 'Ver Archivos' : 'Gestión de Empresas'}
+                                </button>
+                            )}
+                            <button
+                                onClick={handleLogout}
+                                className="flex items-center gap-2 text-slate-500 hover:text-red-500 transition-colors font-bold text-sm bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-lg whitespace-nowrap"
+                            >
+                                <LogOut size={18} /> Salir
+                            </button>
                         </div>
                     </div>
-
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-2 text-slate-500 hover:text-red-500 transition-colors font-bold text-sm bg-slate-50 hover:bg-red-50 px-4 py-2 rounded-lg"
-                    >
-                        <LogOut size={18} /> Salir
-                    </button>
                 </div>
             </header>
 
@@ -301,173 +459,275 @@ function Dashboard() {
                     </div>
                 )}
 
-                {/* ADMIN VIEW */}
-                {isAdmin && !selectedEmpresa && (
-                    <div className="space-y-6">
-                        <div className="flex flex-col md:flex-row justify-between items-end gap-4">
-                            <div>
-                                <h2 className="text-xl font-bold text-slate-700">Empresas Registradas</h2>
-                                <p className="text-slate-500">Selecciona una empresa para gestionar sus archivos.</p>
-                            </div>
-                            <div className="relative w-full md:w-72">
-                                <input
-                                    type="text"
-                                    placeholder="Buscar empresa o RUT..."
-                                    value={searchTerm}
-                                    onChange={(ev) => setSearchTerm(ev.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500"
-                                />
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {filteredEmpresas.map((emp) => (
-                                <div
-                                    key={emp.id}
-                                    onClick={() => {
-                                        setSelectedEmpresa(emp);
-                                        setSearchTerm("");
-                                    }}
-                                    className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md hover:border-sky-300 cursor-pointer transition-all group"
-                                >
-                                    <div className="flex items-center gap-4 mb-4">
-                                        <div className="bg-sky-100 p-3 rounded-full text-sky-600 group-hover:bg-sky-500 group-hover:text-white transition-colors">
-                                            <Building2 size={24} />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-slate-800 group-hover:text-sky-600 transition-colors">
-                                                {emp.nombre}
-                                            </h3>
-                                            <p className="text-xs text-slate-400 font-mono">{emp.rut_empresa}</p>
-                                        </div>
+                {/* ADMIN COMPANY MANAGEMENT PANEL */}
+                {showAdminPanel ? (
+                    <AdminCompanyPanel />
+                ) : (
+                    <>
+                        {/* ADMIN VIEW */}
+                        {isAdmin && !selectedEmpresa && (
+                            <div className="space-y-6">
+                                <div className="flex flex-col md:flex-row justify-between items-end gap-4">
+                                    <div>
+                                        <h2 className="text-xl font-bold text-slate-700">Empresas Registradas</h2>
+                                        <p className="text-slate-500">Selecciona una empresa para gestionar sus archivos.</p>
                                     </div>
-                                    <div className="flex justify-between items-center text-sm text-slate-500 border-t border-slate-100 pt-3">
-                                        <span>Ver archivos</span>
-                                        <ChevronLeft className="rotate-180 w-4 h-4" />
+                                    <div className="relative w-full md:w-72">
+                                        <input
+                                            type="text"
+                                            placeholder="Buscar empresa o RUT..."
+                                            value={searchTerm}
+                                            onChange={(ev) => setSearchTerm(ev.target.value)}
+                                            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500"
+                                        />
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
 
-                {/* FOLDER VIEW */}
-                {selectedEmpresa && (
-                    <div className="space-y-8">
-                        <div className="flex flex-col md:flex-row justify-between items-start gap-4">
-                            <div>
-                                {isAdmin && (
-                                    <button
-                                        onClick={() => {
-                                            setSelectedEmpresa(null);
-                                            setFiles({});
-                                        }}
-                                        className="flex items-center gap-1 text-sky-500 hover:text-sky-700 font-bold text-sm mb-2"
-                                    >
-                                        <ChevronLeft size={16} /> Volver a lista
-                                    </button>
-                                )}
-
-                                <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                                    <Folder className="text-sky-500" />
-                                    Archivos de {selectedEmpresa.nombre}
-                                </h2>
-                                <p className="text-slate-500 text-sm">Gestiona la documentación por categorías.</p>
-                            </div>
-
-                            <div className="relative w-full md:w-72">
-                                <input
-                                    type="text"
-                                    placeholder="Filtrar carpetas..."
-                                    value={searchTerm}
-                                    onChange={(ev) => setSearchTerm(ev.target.value)}
-                                    className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500"
-                                />
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                            {filteredCarpetas.map((carpeta) => (
-                                <div
-                                    key={carpeta.id}
-                                    className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col"
-                                >
-                                    <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                                        <h3 className="font-bold text-slate-700 flex items-center gap-2">
-                                            <Folder size={20} className="text-sky-500" />
-                                            {carpeta.nombre}
-                                        </h3>
-
-                                        <div className="relative">
-                                            <input
-                                                type="file"
-                                                id={`upload-${carpeta.id}`}
-                                                className="hidden"
-                                                onChange={(ev) => handleFileUpload(ev, carpeta.id)}
-                                                disabled={uploading === carpeta.id}
-                                            />
-                                            <label
-                                                htmlFor={`upload-${carpeta.id}`}
-                                                className={`cursor-pointer flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${uploading === carpeta.id
-                                                    ? "bg-slate-200 text-slate-500"
-                                                    : "bg-sky-500 text-white hover:bg-sky-600"
-                                                    }`}
-                                            >
-                                                {uploading === carpeta.id ? (
-                                                    <Loader2 className="animate-spin w-3 h-3" />
-                                                ) : (
-                                                    <Upload size={14} />
-                                                )}
-                                                {uploading === carpeta.id ? "..." : "Subir"}
-                                            </label>
-                                        </div>
-                                    </div>
-
-                                    <div className="p-0 flex-1 bg-slate-50 min-h-[150px]">
-                                        {files[carpeta.id]?.length ? (
-                                            <ul className="divide-y divide-slate-200">
-                                                {files[carpeta.id].map((file) => (
-                                                    <li
-                                                        key={file.id}
-                                                        className="p-3 hover:bg-white transition-colors flex items-center justify-between gap-3 group"
-                                                    >
-                                                        <div className="flex items-center gap-3 overflow-hidden">
-                                                            <div className="bg-white p-2 rounded-lg border border-slate-200 text-slate-400 group-hover:text-sky-500 transition-colors">
-                                                                <FileText size={18} />
-                                                            </div>
-                                                            <div className="min-w-0">
-                                                                <p className="text-sm font-medium text-slate-700 truncate group-hover:text-sky-600 transition-colors">
-                                                                    {file.nombre_archivo}
-                                                                </p>
-                                                                <p className="text-xs text-slate-400">
-                                                                    {new Date(file.created_at).toLocaleDateString()}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-
-                                                        <button
-                                                            onClick={() => handleFileView(file.ruta_almacenamiento)}
-                                                            className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-full transition-all"
-                                                            title="Ver / Descargar"
-                                                        >
-                                                            <Eye size={18} />
-                                                        </button>
-                                                    </li>
-                                                ))}
-                                            </ul>
-                                        ) : (
-                                            <div className="h-full flex flex-col items-center justify-center text-slate-400 p-6">
-                                                <Folder size={32} className="opacity-20 mb-2" />
-                                                <p className="text-xs">Carpeta vacía</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {filteredEmpresas.map((emp) => (
+                                        <div
+                                            key={emp.id}
+                                            onClick={() => {
+                                                setSelectedEmpresa(emp);
+                                                setSearchTerm("");
+                                            }}
+                                            className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 hover:shadow-md hover:border-sky-300 cursor-pointer transition-all group"
+                                        >
+                                            <div className="flex items-center gap-4 mb-4">
+                                                <div className="bg-sky-100 p-3 rounded-full text-sky-600 group-hover:bg-sky-500 group-hover:text-white transition-colors">
+                                                    <Building2 size={24} />
+                                                </div>
+                                                <div>
+                                                    <h3 className="font-bold text-slate-800 group-hover:text-sky-600 transition-colors">
+                                                        {emp.nombre}
+                                                    </h3>
+                                                    <p className="text-xs text-slate-400 font-mono">{emp.rut_empresa}</p>
+                                                </div>
                                             </div>
+                                            <div className="flex justify-between items-center text-sm text-slate-500 border-t border-slate-100 pt-3">
+                                                <span>Ver archivos</span>
+                                                <ChevronLeft className="rotate-180 w-4 h-4" />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* FOLDER VIEW */}
+                        {selectedEmpresa && (
+                            <div className="space-y-8">
+                                <div className="flex flex-col md:flex-row justify-between items-start gap-4">
+                                    <div>
+                                        {isAdmin && (
+                                            <button
+                                                onClick={() => {
+                                                    setSelectedEmpresa(null);
+                                                    setFiles({});
+                                                }}
+                                                className="flex items-center gap-1 text-sky-500 hover:text-sky-700 font-bold text-sm mb-2"
+                                            >
+                                                <ChevronLeft size={16} /> Volver a lista
+                                            </button>
                                         )}
+
+                                        <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
+                                            <Folder className="text-sky-500" />
+                                            Archivos de {selectedEmpresa.nombre}
+                                        </h2>
+                                        <p className="text-slate-500 text-sm">Gestiona la documentación por categorías.</p>
+                                    </div>
+
+                                    <div className="relative w-full md:w-72">
+                                        <input
+                                            type="text"
+                                            placeholder="Filtrar carpetas..."
+                                            value={searchTerm}
+                                            onChange={(ev) => setSearchTerm(ev.target.value)}
+                                            className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500"
+                                        />
+                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 w-4 h-4" />
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    </div>
+
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                    {filteredCarpetas.map((carpeta) => (
+                                        <div
+                                            key={carpeta.id}
+                                            className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden flex flex-col"
+                                        >
+                                            <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
+                                                <h3 className="font-bold text-slate-700 flex items-center gap-2">
+                                                    <Folder size={20} className="text-sky-500" />
+                                                    {carpeta.nombre}
+                                                </h3>
+
+                                                <div className="relative">
+                                                    <input
+                                                        type="file"
+                                                        id={`upload-${carpeta.id}`}
+                                                        className="hidden"
+                                                        onChange={(ev) => handleFileUpload(ev, carpeta.id)}
+                                                        disabled={uploading === carpeta.id}
+                                                    />
+                                                    <label
+                                                        htmlFor={`upload-${carpeta.id}`}
+                                                        className={`cursor-pointer flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${uploading === carpeta.id
+                                                            ? "bg-slate-200 text-slate-500"
+                                                            : "bg-sky-500 text-white hover:bg-sky-600"
+                                                            }`}
+                                                    >
+                                                        {uploading === carpeta.id ? (
+                                                            <Loader2 className="animate-spin w-3 h-3" />
+                                                        ) : (
+                                                            <Upload size={14} />
+                                                        )}
+                                                        {uploading === carpeta.id ? "..." : "Subir"}
+                                                    </label>
+                                                </div>
+                                            </div>
+
+                                            <div className="p-0 flex-1 bg-slate-50 min-h-[150px]">
+                                                {files[carpeta.id]?.length ? (
+                                                    <ul className="divide-y divide-slate-200">
+                                                        {files[carpeta.id].map((file) => (
+                                                            <li
+                                                                key={file.id}
+                                                                className="p-3 hover:bg-white transition-colors flex items-center justify-between gap-3 group"
+                                                            >
+                                                                <div className="flex items-center gap-3 overflow-hidden">
+                                                                    <div className="bg-white p-2 rounded-lg border border-slate-200 text-slate-400 group-hover:text-sky-500 transition-colors">
+                                                                        <FileText size={18} />
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <p className="text-sm font-medium text-slate-700 truncate group-hover:text-sky-600 transition-colors">
+                                                                            {file.nombre_archivo}
+                                                                        </p>
+                                                                        <p className="text-xs text-slate-400">
+                                                                            {new Date(file.created_at).toLocaleDateString()}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+
+                                                                <button
+                                                                    onClick={() => handleFileView(file.ruta_almacenamiento)}
+                                                                    className="p-2 text-slate-400 hover:text-sky-600 hover:bg-sky-50 rounded-full transition-all"
+                                                                    title="Ver / Descargar"
+                                                                >
+                                                                    <Eye size={18} />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => handleDeleteFile(file)}
+                                                                    className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all"
+                                                                    title="Eliminar archivo"
+                                                                >
+                                                                    <Trash2 size={18} />
+                                                                </button>
+                                                            </li>
+                                                        ))}
+                                                    </ul>
+                                                ) : (
+                                                    <div className="h-full flex flex-col items-center justify-center text-slate-400 p-6">
+                                                        <Folder size={32} className="opacity-20 mb-2" />
+                                                        <p className="text-xs">Carpeta vacía</p>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* COMMENT SECTION - ADMIN */}
+                                            {isAdmin && (
+                                                <div className="border-t border-slate-200 bg-white p-4">
+                                                    {/* Lista de comentarios existentes */}
+                                                    {comentarios[carpeta.id]?.length > 0 && (
+                                                        <div className="mb-4 space-y-3">
+                                                            {comentarios[carpeta.id].map((comm) => (
+                                                                <div key={comm.id} className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-start group">
+                                                                    <div className="flex items-start gap-2">
+                                                                        <MessageSquare size={16} className="text-sky-500 mt-1 flex-shrink-0" />
+                                                                        <p className="text-sm text-slate-700 whitespace-pre-wrap">{comm.comentario}</p>
+                                                                    </div>
+                                                                    <button
+                                                                        onClick={() => handleDeleteComment(comm.id, carpeta.id)}
+                                                                        className="text-slate-400 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                                        title="Eliminar comentario"
+                                                                    >
+                                                                        <Trash2 size={16} />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {/* Formulario para agregar nuevo */}
+                                                    <div className="flex items-start gap-2">
+                                                        <div className="flex-1">
+                                                            {editingComment === carpeta.id ? (
+                                                                <div className="space-y-2">
+                                                                    <textarea
+                                                                        value={commentText}
+                                                                        onChange={(e) => setCommentText(e.target.value)}
+                                                                        placeholder="Escribe un nuevo comentario..."
+                                                                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-transparent text-sm resize-none"
+                                                                        rows={2}
+                                                                        autoFocus
+                                                                    />
+                                                                    <div className="flex gap-2">
+                                                                        <button
+                                                                            onClick={() => handleSaveComment(carpeta.id)}
+                                                                            disabled={!commentText.trim() || loading}
+                                                                            className="flex items-center gap-1 px-3 py-1.5 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors text-sm font-medium disabled:opacity-50"
+                                                                        >
+                                                                            <Send size={14} />
+                                                                            Agregar
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setEditingComment(null);
+                                                                                setCommentText("");
+                                                                            }}
+                                                                            className="px-3 py-1.5 bg-slate-200 text-slate-700 rounded-lg hover:bg-slate-300 transition-colors text-sm font-medium"
+                                                                        >
+                                                                            Cancelar
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <button
+                                                                    onClick={() => {
+                                                                        setEditingComment(carpeta.id);
+                                                                        setCommentText("");
+                                                                    }}
+                                                                    className="text-sm text-sky-600 hover:text-sky-700 font-medium flex items-center gap-1"
+                                                                >
+                                                                    + Agregar comentario
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* COMMENT SECTION - USER VIEW */}
+                                            {!isAdmin && comentarios[carpeta.id]?.length > 0 && (
+                                                <div className="border-t border-slate-200 bg-sky-50 p-4 space-y-3">
+                                                    <p className="text-xs font-bold text-sky-700 mb-1">Comentarios del Administrador:</p>
+                                                    {comentarios[carpeta.id].map((comm) => (
+                                                        <div key={comm.id} className="flex items-start gap-2">
+                                                            <MessageSquare size={16} className="text-sky-600 mt-1 flex-shrink-0" />
+                                                            <p className="text-sm text-slate-700 whitespace-pre-wrap">
+                                                                {comm.comentario}
+                                                            </p>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
             </main>
         </div>
