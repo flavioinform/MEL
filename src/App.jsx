@@ -9,11 +9,13 @@ import Register from "./pages/register";
 import Dashboard from "./pages/dashboard";
 import Mision from "./pages/Mision";
 import Vision from "./pages/Vision";
+import WhatsAppButton from "./components/WhatsAppButton";
 
 function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen min-w-screen bg-slate-100 flex flex-col">
+      <div className="min-h-screen min-w-screen bg-slate-100 flex flex-col relative">
+        <WhatsAppButton />
         <Navbar />
 
         <div className="flex-1">

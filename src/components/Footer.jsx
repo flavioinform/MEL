@@ -54,11 +54,11 @@ function Footer() {
                             </li>
                             <li className="flex items-center gap-3">
                                 <Mail className="text-sky-500 w-5 h-5 flex-shrink-0" />
-                                <a href="mailto:contacto@mels.cl" className="hover:text-white transition-colors">contacto@mels.cl</a>
+                                <a href="mailto:contacto@mels.cl" className="hover:text-white transition-colors">mentorgestiones@gmail.com</a>
                             </li>
                             <li className="flex items-center gap-3">
                                 <Phone className="text-sky-500 w-5 h-5 flex-shrink-0" />
-                                <a href="tel:+56912345678" className="hover:text-white transition-colors">+56 9 1234 5678</a>
+                                <a href="tel:+56912345678" className="hover:text-white transition-colors">+56 9 7750 9209</a>
                             </li>
                         </ul>
                     </div>

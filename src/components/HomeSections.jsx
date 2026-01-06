@@ -180,7 +180,7 @@ function HomeSections() {
                     </div>
                     <div>
                       <span className="text-sm font-bold text-sky-200 uppercase block mb-1">Email Corporativo</span>
-                      <p className="font-medium text-lg">contacto@mel-seguridad.cl</p>
+                      <p className="font-medium text-lg">mentorgestiones@gmail.com</p>
                     </div>
                   </div>
                 </div>

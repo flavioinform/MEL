@@ -11,6 +11,8 @@ import Autoplay from "embla-carousel-autoplay"
 import mentorimg from "../assets/imagenes/1.svg";
 import mentorimg1 from "../assets/servicios/mt3.jpg"; // Using the requested image
 import mentorimg2 from "../assets/servicios/baneerr.jpg";
+import cocinaImg from "../assets/imagenes/cocina.png";
+import miniImg from "../assets/imagenes/mini.jpg";
 import logoMels from "../assets/imagenes/logomels.png";
 
 const slides = [
@@ -40,6 +42,22 @@ const slides = [
     subtitle: "Formación continua y prevención para la seguridad de tu equipo.",
     cta: "Ver Más",
     link: "#quienes-somos"
+  },
+  {
+    id: 4,
+    image: cocinaImg,
+    topText: "Servicios para",
+    bottomText: "Restaurantes",
+    subtitle: "Servicios integrales para Restaurantes y Minimarkets.",
+    link: "#contacto"
+  },
+  {
+    id: 5,
+    image: miniImg,
+    topText: "Servicios para",
+    bottomText: "Minimarkets",
+    subtitle: "Servicios integrales para Restaurantes y Minimarkets.",
+    link: "#servicios"
   }
 ];
 
@@ -98,12 +116,14 @@ function Hero() {
                     {slide.subtitle}
                   </p>
 
-                  <div className="pt-8">
-                    <button className="group bg-sky-500 hover:bg-sky-400 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 shadow-xl shadow-sky-500/20 flex items-center gap-3 hover:translate-x-2 border border-sky-400/50">
-                      {slide.cta}
-                      <ArrowRight className="w-5 h-5" />
-                    </button>
-                  </div>
+                  {slide.cta && (
+                    <div className="pt-8">
+                      <button className="group bg-sky-500 hover:bg-sky-400 text-white px-8 py-4 rounded-xl font-bold text-lg transition-all duration-300 shadow-xl shadow-sky-500/20 flex items-center gap-3 hover:translate-x-2 border border-sky-400/50">
+                        {slide.cta}
+                        <ArrowRight className="w-5 h-5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             </CarouselItem>
