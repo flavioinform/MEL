@@ -53,6 +53,7 @@ function Hero2() {
           </span>
         </h2>
       </div>
+      <br />
 
       <div className="w-full max-w-6xl flex items-center px-4">
         <Carousel opts={{ align: "start", loop: true }} className="w-full">
@@ -63,14 +64,15 @@ function Hero2() {
                 key={index}
                 className="pl-4 basis-1/2 sm:basis-1/3 md:basis-1/5 lg:basis-1/6"
               >
+                <br />
                 <div className="flex flex-col items-center gap-4 group cursor-pointer">
 
                   {/* BURBUJA */}
-                  <div className="w-28 h-28 rounded-full bg-white flex items-center justify-center shadow-lg border-2 border-slate-100 group-hover:border-sky-400 group-hover:bg-sky-500 transition-all duration-300 relative overflow-hidden group-hover:-translate-y-1">
+                  <div className="w-28 h-28 rounded-full bg-white flex items-center justify-center shadow-lg border-2 border-slate-100 group-hover:border-sky-400 group-hover:bg-sky-50 group-hover:shadow-[0_0_20px_rgba(56,189,248,0.6)] transition-all duration-300 relative overflow-hidden group-hover:-translate-y-1">
                     <img
                       src={s.img}
                       alt={s.label}
-                      className="h-16 w-16 object-contain opacity-80 group-hover:opacity-100 group-hover:brightness-0 group-hover:invert transition-all duration-300"
+                      className="h-16 w-16 object-contain opacity-80 group-hover:opacity-100 group-hover:scale-110 transition-all duration-300 mix-blend-multiply"
                     />
                   </div>
 
