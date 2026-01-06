@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://mel-jdgt.vercel.app/sitemap.xml
+Sitemap: https://www.melschile.cl/sitemap.xml
